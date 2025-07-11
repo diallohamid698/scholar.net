@@ -4,31 +4,110 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { MessageCircle, Send, Search, ArrowLeft } from 'lucide-react';
+import { MessageCircle, Send, Search, ArrowLeft, Phone, Video, MoreVertical } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useToast } from "@/hooks/use-toast";
+
+interface Message {
+  id: number;
+  sender: string;
+  content: string;
+  time: string;
+  isOwn: boolean;
+}
+
+interface Conversation {
+  id: number;
+  name: string;
+  lastMessage: string;
+  time: string;
+  unread: number;
+  avatar?: string;
+}
 
 const Messages = () => {
-  const [selectedChat, setSelectedChat] = useState<number | null>(null);
+  const [selectedChat, setSelectedChat] = useState<number | null>(1);
   const [newMessage, setNewMessage] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const { toast } = useToast();
 
-  const conversations = [
+  const [conversations, setConversations] = useState<Conversation[]>([
     { id: 1, name: 'M. Dubois', lastMessage: 'Concernant le devoir de maths...', time: '14:30', unread: 2 },
     { id: 2, name: 'Mme Martin', lastMessage: 'Réunion parents-professeurs', time: '12:15', unread: 0 },
     { id: 3, name: 'Direction', lastMessage: 'Nouvelle circulaire', time: '10:45', unread: 1 },
-    { id: 4, name: 'Sarah L.', lastMessage: 'On se voit à la cantine ?', time: '09:20', unread: 0 }
-  ];
+    { id: 4, name: 'Sarah L.', lastMessage: 'On se voit à la cantine ?', time: '09:20', unread: 0 },
+    { id: 5, name: 'Mme Rousseau', lastMessage: 'Sortie scolaire prévue', time: '08:45', unread: 0 }
+  ]);
 
-  const messages = [
+  const [messages, setMessages] = useState<Message[]>([
     { id: 1, sender: 'M. Dubois', content: 'Bonjour, j\'ai regardé votre devoir de mathématiques.', time: '14:25', isOwn: false },
     { id: 2, sender: 'Vous', content: 'Bonjour Monsieur, y a-t-il des corrections à apporter ?', time: '14:28', isOwn: true },
-    { id: 3, sender: 'M. Dubois', content: 'Oui, il y a quelques erreurs dans l\'exercice 3. Pouvez-vous le refaire ?', time: '14:30', isOwn: false }
-  ];
+    { id: 3, sender: 'M. Dubois', content: 'Oui, il y a quelques erreurs dans l\'exercice 3. Pouvez-vous le refaire ?', time: '14:30', isOwn: false },
+    { id: 4, sender: 'Vous', content: 'Bien sûr, je vais corriger cela ce soir.', time: '14:32', isOwn: true }
+  ]);
 
   const handleSendMessage = () => {
-    if (newMessage.trim()) {
-      console.log('Envoi du message:', newMessage);
+    if (newMessage.trim() && selectedChat) {
+      const newMsg: Message = {
+        id: messages.length + 1,
+        sender: 'Vous',
+        content: newMessage,
+        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        isOwn: true
+      };
+      
+      setMessages([...messages, newMsg]);
+      
+      // Mettre à jour la conversation
+      setConversations(prev => 
+        prev.map(conv => 
+          conv.id === selectedChat 
+            ? { ...conv, lastMessage: newMessage, time: newMsg.time }
+            : conv
+        )
+      );
+      
       setNewMessage('');
+      
+      toast({
+        title: "Message envoyé",
+        description: "Votre message a été envoyé avec succès.",
+      });
+
+      // Simuler une réponse automatique après 2 secondes
+      setTimeout(() => {
+        const autoReply: Message = {
+          id: messages.length + 2,
+          sender: getCurrentConversationName() || 'Utilisateur',
+          content: 'Message reçu, je vous réponds dès que possible.',
+          time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+          isOwn: false
+        };
+        setMessages(prev => [...prev, autoReply]);
+      }, 2000);
     }
+  };
+
+  const getCurrentConversationName = () => {
+    return conversations.find(conv => conv.id === selectedChat)?.name;
+  };
+
+  const filteredConversations = conversations.filter(conv =>
+    conv.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    conv.lastMessage.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const markAsRead = (convId: number) => {
+    setConversations(prev =>
+      prev.map(conv =>
+        conv.id === convId ? { ...conv, unread: 0 } : conv
+      )
+    );
+  };
+
+  const handleConversationClick = (convId: number) => {
+    setSelectedChat(convId);
+    markAsRead(convId);
   };
 
   return (
@@ -54,16 +133,23 @@ const Messages = () => {
               <CardTitle>Conversations</CardTitle>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input placeholder="Rechercher..." className="pl-10" />
+                <Input 
+                  placeholder="Rechercher..." 
+                  className="pl-10" 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
               </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="space-y-2">
-                {conversations.map((conv) => (
+                {filteredConversations.map((conv) => (
                   <div
                     key={conv.id}
-                    className={`p-4 cursor-pointer hover:bg-slate-50 ${selectedChat === conv.id ? 'bg-blue-50 border-r-2 border-blue-500' : ''}`}
-                    onClick={() => setSelectedChat(conv.id)}
+                    className={`p-4 cursor-pointer hover:bg-slate-50 transition-colors ${
+                      selectedChat === conv.id ? 'bg-blue-50 border-r-2 border-blue-500' : ''
+                    }`}
+                    onClick={() => handleConversationClick(conv.id)}
                   >
                     <div className="flex items-center space-x-3">
                       <Avatar className="h-10 w-10">
@@ -77,7 +163,7 @@ const Messages = () => {
                         <p className="text-sm text-slate-600 truncate">{conv.lastMessage}</p>
                       </div>
                       {conv.unread > 0 && (
-                        <span className="bg-blue-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                        <span className="bg-blue-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
                           {conv.unread}
                         </span>
                       )}
@@ -93,11 +179,32 @@ const Messages = () => {
             {selectedChat ? (
               <>
                 <CardHeader className="border-b">
-                  <CardTitle className="flex items-center space-x-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback>MD</AvatarFallback>
-                    </Avatar>
-                    <span>M. Dubois</span>
+                  <CardTitle className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback>
+                          {getCurrentConversationName()?.split(' ').map(n => n[0]).join('') || 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <span className="font-semibold">{getCurrentConversationName()}</span>
+                        <div className="text-xs text-green-500 flex items-center">
+                          <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
+                          En ligne
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex space-x-2">
+                      <Button variant="ghost" size="sm">
+                        <Phone className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm">
+                        <Video className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </CardTitle>
                 </CardHeader>
                 
@@ -109,7 +216,7 @@ const Messages = () => {
                           message.isOwn 
                             ? 'bg-blue-500 text-white' 
                             : 'bg-slate-100 text-slate-900'
-                        }`}>
+                        } animate-fade-in`}>
                           <p className="text-sm">{message.content}</p>
                           <p className={`text-xs mt-1 ${message.isOwn ? 'text-blue-100' : 'text-slate-500'}`}>
                             {message.time}
@@ -129,7 +236,11 @@ const Messages = () => {
                       onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                       className="flex-1"
                     />
-                    <Button onClick={handleSendMessage}>
+                    <Button 
+                      onClick={handleSendMessage}
+                      disabled={!newMessage.trim()}
+                      className="hover-scale"
+                    >
                       <Send className="h-4 w-4" />
                     </Button>
                   </div>
