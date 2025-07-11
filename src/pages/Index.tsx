@@ -1,5 +1,5 @@
-
 import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,11 +18,39 @@ import {
   Clock,
   TrendingUp,
   Award,
-  School
+  School,
+  LogOut
 } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
   const [activeRole, setActiveRole] = useState<'student' | 'teacher' | 'admin'>('student');
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  // Vérifier si l'utilisateur est connecté
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
+  const isAuthenticated = user?.isAuthenticated;
+
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    toast({
+      title: "Déconnexion réussie",
+      description: "À bientôt sur EcoleNet !",
+    });
+    navigate('/login');
+  };
+
+  // Si pas connecté, rediriger vers login
+  React.useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login');
+    }
+  }, [isAuthenticated, navigate]);
+
+  if (!isAuthenticated) {
+    return null; // Éviter le flash pendant la redirection
+  }
 
   const announcements = [
     {
@@ -270,8 +298,11 @@ const Index = () => {
                 </Button>
                 <Avatar className="h-8 w-8">
                   <AvatarImage src="/api/placeholder/32/32" />
-                  <AvatarFallback>JD</AvatarFallback>
+                  <AvatarFallback>{user?.email?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
                 </Avatar>
+                <Button variant="ghost" size="sm" onClick={handleLogout}>
+                  <LogOut className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           </div>
@@ -329,22 +360,30 @@ const Index = () => {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <Button variant="outline" className="h-20 flex-col">
-                    <MessageCircle className="h-6 w-6 mb-2 text-blue-600" />
-                    <span className="text-xs">Messagerie</span>
-                  </Button>
-                  <Button variant="outline" className="h-20 flex-col">
-                    <Calendar className="h-6 w-6 mb-2 text-green-600" />
-                    <span className="text-xs">Emploi du temps</span>
-                  </Button>
-                  <Button variant="outline" className="h-20 flex-col">
-                    <BookOpen className="h-6 w-6 mb-2 text-purple-600" />
-                    <span className="text-xs">Cours</span>
-                  </Button>
-                  <Button variant="outline" className="h-20 flex-col">
-                    <FileText className="h-6 w-6 mb-2 text-orange-600" />
-                    <span className="text-xs">Documents</span>
-                  </Button>
+                  <Link to="/messages">
+                    <Button variant="outline" className="h-20 flex-col w-full">
+                      <MessageCircle className="h-6 w-6 mb-2 text-blue-600" />
+                      <span className="text-xs">Messagerie</span>
+                    </Button>
+                  </Link>
+                  <Link to="/schedule">
+                    <Button variant="outline" className="h-20 flex-col w-full">
+                      <Calendar className="h-6 w-6 mb-2 text-green-600" />
+                      <span className="text-xs">Emploi du temps</span>
+                    </Button>
+                  </Link>
+                  <Link to="/courses">
+                    <Button variant="outline" className="h-20 flex-col w-full">
+                      <BookOpen className="h-6 w-6 mb-2 text-purple-600" />
+                      <span className="text-xs">Cours</span>
+                    </Button>
+                  </Link>
+                  <Link to="/documents">
+                    <Button variant="outline" className="h-20 flex-col w-full">
+                      <FileText className="h-6 w-6 mb-2 text-orange-600" />
+                      <span className="text-xs">Documents</span>
+                    </Button>
+                  </Link>
                 </div>
               </CardContent>
             </Card>
