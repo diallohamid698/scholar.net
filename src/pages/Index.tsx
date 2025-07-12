@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,240 +14,180 @@ import {
   GraduationCap,
   Bell,
   Settings,
-  Home,
   UserCheck,
   Clock,
-  TrendingUp,
   Award,
   School,
-  LogOut
+  LogOut,
+  CreditCard,
+  AlertTriangle,
+  CheckCircle,
+  Plus
 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { User, Session } from '@supabase/supabase-js';
 
 const Index = () => {
-  const [activeRole, setActiveRole] = useState<'student' | 'teacher' | 'admin'>('student');
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [students, setStudents] = useState<any[]>([]);
+  const [studentFees, setStudentFees] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Vérifier si l'utilisateur est connecté
-  const user = JSON.parse(localStorage.getItem('user') || 'null');
-  const isAuthenticated = user?.isAuthenticated;
+  useEffect(() => {
+    // Écouter les changements d'authentification
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        if (!session) {
+          navigate('/login');
+        } else {
+          fetchUserData(session.user.id);
+        }
+      }
+    );
 
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    toast({
-      title: "Déconnexion réussie",
-      description: "À bientôt sur EcoleNet !",
+    // Vérifier la session actuelle
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      
+      if (!session) {
+        navigate('/login');
+      } else {
+        fetchUserData(session.user.id);
+      }
     });
-    navigate('/login');
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const fetchUserData = async (userId: string) => {
+    try {
+      setIsLoading(true);
+      
+      // Récupérer le profil
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+      } else {
+        setProfile(profileData);
+      }
+
+      // Récupérer les étudiants
+      const { data: studentsData, error: studentsError } = await supabase
+        .from('students')
+        .select('*')
+        .eq('parent_id', userId);
+
+      if (studentsError) {
+        console.error('Error fetching students:', studentsError);
+      } else {
+        setStudents(studentsData || []);
+        
+        // Récupérer les frais pour chaque étudiant
+        if (studentsData && studentsData.length > 0) {
+          const studentIds = studentsData.map(s => s.id);
+          const { data: feesData, error: feesError } = await supabase
+            .from('student_fees')
+            .select(`
+              *,
+              fee_types(*),
+              students(first_name, last_name)
+            `)
+            .in('student_id', studentIds);
+
+          if (feesError) {
+            console.error('Error fetching fees:', feesError);
+          } else {
+            setStudentFees(feesData || []);
+          }
+        }
+      }
+
+      // Récupérer les notifications
+      const { data: notificationsData, error: notificationsError } = await supabase
+        .from('payment_notifications')
+        .select('*')
+        .eq('parent_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (notificationsError) {
+        console.error('Error fetching notifications:', notificationsError);
+      } else {
+        setNotifications(notificationsData || []);
+      }
+
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // Si pas connecté, rediriger vers login
-  React.useEffect(() => {
-    if (!isAuthenticated) {
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast({
+        title: "Erreur de déconnexion",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Déconnexion réussie",
+        description: "À bientôt sur EcoleNet !",
+      });
       navigate('/login');
     }
-  }, [isAuthenticated, navigate]);
+  };
 
-  if (!isAuthenticated) {
-    return null; // Éviter le flash pendant la redirection
+  const getOverdueFees = () => {
+    const today = new Date();
+    return studentFees.filter(fee => 
+      fee.status === 'pending' && new Date(fee.due_date) < today
+    );
+  };
+
+  const getPendingFees = () => {
+    return studentFees.filter(fee => fee.status === 'pending');
+  };
+
+  const getPaidFees = () => {
+    return studentFees.filter(fee => fee.status === 'paid');
+  };
+
+  const getTotalAmount = (fees: any[]) => {
+    return fees.reduce((total, fee) => total + parseFloat(fee.amount), 0);
+  };
+
+  if (isLoading || !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <School className="h-12 w-12 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-slate-600">Chargement...</p>
+        </div>
+      </div>
+    );
   }
 
-  const announcements = [
-    {
-      id: 1,
-      title: "Réunion parents-professeurs",
-      content: "Les réunions se dérouleront du 15 au 20 mars. Inscriptions ouvertes.",
-      author: "Direction",
-      date: "2024-03-01",
-      priority: "high",
-      category: "Événement"
-    },
-    {
-      id: 2,
-      title: "Nouvelle plateforme d'apprentissage",
-      content: "Découvrez notre nouvelle plateforme collaborative pour les cours en ligne.",
-      author: "Service IT",
-      date: "2024-02-28",
-      priority: "medium",
-      category: "Technologie"
-    },
-    {
-      id: 3,
-      title: "Concours de sciences",
-      content: "Inscription ouverte pour le concours inter-classes de sciences.",
-      author: "Mme. Dubois",
-      date: "2024-02-25",
-      priority: "low",
-      category: "Pédagogie"
-    }
-  ];
-
-  const upcomingEvents = [
-    { id: 1, title: "Conseil de classe 6A", date: "2024-03-15", time: "14:00" },
-    { id: 2, title: "Formation numérique", date: "2024-03-18", time: "10:00" },
-    { id: 3, title: "Sortie scolaire 5B", date: "2024-03-22", time: "08:30" }
-  ];
-
-  const quickStats = {
-    student: {
-      totalClasses: 8,
-      assignmentsDue: 3,
-      attendance: 95,
-      avgGrade: 14.5
-    },
-    teacher: {
-      totalClasses: 12,
-      studentsTotal: 240,
-      assignmentsToGrade: 18,
-      meetingsToday: 2
-    },
-    admin: {
-      totalStudents: 580,
-      totalTeachers: 45,
-      pendingRequests: 7,
-      systemHealth: 98
-    }
-  };
-
-  const renderRoleSpecificDashboard = () => {
-    switch(activeRole) {
-      case 'student':
-        return (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-blue-700">Cours aujourd'hui</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-blue-900">{quickStats.student.totalClasses}</div>
-                <p className="text-xs text-blue-600 mt-1">Mathématiques à 14h</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-orange-700">Devoirs à rendre</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-orange-900">{quickStats.student.assignmentsDue}</div>
-                <p className="text-xs text-orange-600 mt-1">Prochain: Français demain</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-green-700">Assiduité</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-900">{quickStats.student.attendance}%</div>
-                <p className="text-xs text-green-600 mt-1">Excellent!</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-purple-700">Moyenne générale</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-purple-900">{quickStats.student.avgGrade}/20</div>
-                <p className="text-xs text-purple-600 mt-1">En progression</p>
-              </CardContent>
-            </Card>
-          </div>
-        );
-      
-      case 'teacher':
-        return (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100 border-indigo-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-indigo-700">Classes gérées</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-indigo-900">{quickStats.teacher.totalClasses}</div>
-                <p className="text-xs text-indigo-600 mt-1">6 niveaux différents</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-gradient-to-br from-teal-50 to-teal-100 border-teal-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-teal-700">Élèves total</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-teal-900">{quickStats.teacher.studentsTotal}</div>
-                <p className="text-xs text-teal-600 mt-1">Répartis sur vos classes</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-red-700">À corriger</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-red-900">{quickStats.teacher.assignmentsToGrade}</div>
-                <p className="text-xs text-red-600 mt-1">Copies en attente</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-yellow-700">Réunions aujourd'hui</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-yellow-900">{quickStats.teacher.meetingsToday}</div>
-                <p className="text-xs text-yellow-600 mt-1">Conseil de classe à 16h</p>
-              </CardContent>
-            </Card>
-          </div>
-        );
-      
-      case 'admin':
-        return (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card className="bg-gradient-to-br from-slate-50 to-slate-100 border-slate-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-slate-700">Élèves total</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-slate-900">{quickStats.admin.totalStudents}</div>
-                <p className="text-xs text-slate-600 mt-1">Tous niveaux confondus</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100 border-emerald-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-emerald-700">Enseignants</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-emerald-900">{quickStats.admin.totalTeachers}</div>
-                <p className="text-xs text-emerald-600 mt-1">Corps enseignant</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-amber-700">Demandes en attente</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-amber-900">{quickStats.admin.pendingRequests}</div>
-                <p className="text-xs text-amber-600 mt-1">À traiter</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-gradient-to-br from-cyan-50 to-cyan-100 border-cyan-200">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-cyan-700">Système</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-cyan-900">{quickStats.admin.systemHealth}%</div>
-                <p className="text-xs text-cyan-600 mt-1">Fonctionnel</p>
-              </CardContent>
-            </Card>
-          </div>
-        );
-    }
-  };
+  const overdueFees = getOverdueFees();
+  const pendingFees = getPendingFees();
+  const paidFees = getPaidFees();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
@@ -260,46 +201,28 @@ const Index = () => {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">EcoleNet</h1>
-                <p className="text-sm text-slate-600">Intranet Scolaire Collaboratif</p>
+                <p className="text-sm text-slate-600">Espace Parent</p>
               </div>
             </div>
             
             <div className="flex items-center space-x-4">
-              <div className="flex space-x-2">
-                <Button 
-                  variant={activeRole === 'student' ? 'default' : 'outline'} 
-                  size="sm"
-                  onClick={() => setActiveRole('student')}
-                  className="text-xs"
-                >
-                  Élève
-                </Button>
-                <Button 
-                  variant={activeRole === 'teacher' ? 'default' : 'outline'} 
-                  size="sm"
-                  onClick={() => setActiveRole('teacher')}
-                  className="text-xs"
-                >
-                  Enseignant
-                </Button>
-                <Button 
-                  variant={activeRole === 'admin' ? 'default' : 'outline'} 
-                  size="sm"
-                  onClick={() => setActiveRole('admin')}
-                  className="text-xs"
-                >
-                  Administration
-                </Button>
-              </div>
-              
               <div className="flex items-center space-x-3">
                 <Button variant="ghost" size="sm">
                   <Bell className="h-4 w-4" />
+                  {notifications.length > 0 && (
+                    <Badge className="ml-1 h-4 w-4 p-0 text-xs">{notifications.length}</Badge>
+                  )}
                 </Button>
                 <Avatar className="h-8 w-8">
                   <AvatarImage src="/api/placeholder/32/32" />
-                  <AvatarFallback>{user?.email?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+                  <AvatarFallback>
+                    {profile?.first_name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
+                  </AvatarFallback>
                 </Avatar>
+                <div className="text-sm">
+                  <p className="font-medium">{profile?.first_name} {profile?.last_name}</p>
+                  <p className="text-slate-500">{user.email}</p>
+                </div>
                 <Button variant="ghost" size="sm" onClick={handleLogout}>
                   <LogOut className="h-4 w-4" />
                 </Button>
@@ -311,153 +234,211 @@ const Index = () => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Role-specific Dashboard */}
-        {renderRoleSpecificDashboard()}
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-blue-700">Mes Enfants</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-900">{students.length}</div>
+              <p className="text-xs text-blue-600 mt-1">Élèves inscrits</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-red-700">Frais en retard</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-900">{overdueFees.length}</div>
+              <p className="text-xs text-red-600 mt-1">{getTotalAmount(overdueFees).toFixed(2)} €</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-orange-700">À payer</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-900">{pendingFees.length}</div>
+              <p className="text-xs text-orange-600 mt-1">{getTotalAmount(pendingFees).toFixed(2)} €</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-green-700">Payés</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-900">{paidFees.length}</div>
+              <p className="text-xs text-green-600 mt-1">{getTotalAmount(paidFees).toFixed(2)} €</p>
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Announcements */}
+          {/* Left Column - Students and Fees */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Students */}
+            <Card className="shadow-lg">
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <CardTitle className="flex items-center text-xl text-slate-800">
+                      <GraduationCap className="mr-2 h-5 w-5 text-blue-600" />
+                      Mes Enfants
+                    </CardTitle>
+                    <CardDescription>
+                      Liste de vos enfants inscrits
+                    </CardDescription>
+                  </div>
+                  <Button size="sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Ajouter
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {students.length > 0 ? (
+                  students.map((student) => (
+                    <div key={student.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <Avatar>
+                          <AvatarFallback>
+                            {student.first_name[0]}{student.last_name[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium">{student.first_name} {student.last_name}</p>
+                          <p className="text-sm text-slate-600">Classe: {student.class_level}</p>
+                          <p className="text-xs text-slate-500">N° {student.student_number}</p>
+                        </div>
+                      </div>
+                      <Badge variant={student.status === 'active' ? 'default' : 'secondary'}>
+                        {student.status === 'active' ? 'Actif' : 'Inactif'}
+                      </Badge>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <GraduationCap className="h-12 w-12 mx-auto text-slate-400 mb-4" />
+                    <p className="text-slate-600">Aucun enfant inscrit</p>
+                    <p className="text-sm text-slate-500">Ajoutez vos enfants pour commencer</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Fees */}
             <Card className="shadow-lg">
               <CardHeader>
                 <CardTitle className="flex items-center text-xl text-slate-800">
-                  <Bell className="mr-2 h-5 w-5 text-blue-600" />
-                  Annonces & Actualités
+                  <CreditCard className="mr-2 h-5 w-5 text-green-600" />
+                  Frais Scolaires
                 </CardTitle>
                 <CardDescription>
-                  Dernières informations de l'établissement
+                  Suivi des paiements scolaires
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {announcements.map((announcement) => (
-                  <div key={announcement.id} className="border-l-4 border-blue-500 bg-blue-50 p-4 rounded-r-lg">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-semibold text-slate-900">{announcement.title}</h3>
-                      <div className="flex items-center space-x-2">
-                        <Badge 
-                          variant={announcement.priority === 'high' ? 'destructive' : 
-                                 announcement.priority === 'medium' ? 'default' : 'secondary'}
-                          className="text-xs"
-                        >
-                          {announcement.category}
-                        </Badge>
+                {studentFees.length > 0 ? (
+                  studentFees.map((fee) => (
+                    <div key={fee.id} className="border-l-4 border-blue-500 bg-blue-50 p-4 rounded-r-lg">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <h3 className="font-semibold text-slate-900">
+                            {fee.fee_types?.name} - {fee.students?.first_name} {fee.students?.last_name}
+                          </h3>
+                          <p className="text-sm text-slate-600">{fee.amount} € - Échéance: {new Date(fee.due_date).toLocaleDateString('fr-FR')}</p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {fee.status === 'paid' && <CheckCircle className="h-5 w-5 text-green-600" />}
+                          {fee.status === 'pending' && new Date(fee.due_date) < new Date() && <AlertTriangle className="h-5 w-5 text-red-600" />}
+                          <Badge 
+                            variant={fee.status === 'paid' ? 'default' : 
+                                   fee.status === 'pending' && new Date(fee.due_date) < new Date() ? 'destructive' : 'secondary'}
+                          >
+                            {fee.status === 'paid' ? 'Payé' : 
+                             fee.status === 'pending' && new Date(fee.due_date) < new Date() ? 'En retard' : 'À payer'}
+                          </Badge>
+                        </div>
                       </div>
+                      {fee.status === 'pending' && (
+                        <div className="mt-3">
+                          <Button size="sm" className="mr-2">
+                            Payer maintenant
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-slate-700 text-sm mb-2">{announcement.content}</p>
-                    <div className="flex justify-between items-center text-xs text-slate-500">
-                      <span>Par {announcement.author}</span>
-                      <span>{new Date(announcement.date).toLocaleDateString('fr-FR')}</span>
-                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8">
+                    <CreditCard className="h-12 w-12 mx-auto text-slate-400 mb-4" />
+                    <p className="text-slate-600">Aucun frais scolaire</p>
                   </div>
-                ))}
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right Column - Notifications and Quick Actions */}
+          <div className="space-y-6">
+            {/* Notifications */}
+            <Card className="shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center text-lg text-slate-800">
+                  <Bell className="mr-2 h-4 w-4 text-orange-600" />
+                  Notifications
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {notifications.length > 0 ? (
+                  notifications.map((notification) => (
+                    <div key={notification.id} className="p-3 bg-orange-50 rounded-lg border-l-4 border-orange-500">
+                      <h4 className="font-medium text-sm text-slate-900">{notification.title}</h4>
+                      <p className="text-xs text-slate-600 mt-1">{notification.message}</p>
+                      <p className="text-xs text-slate-500 mt-2">
+                        {new Date(notification.created_at).toLocaleDateString('fr-FR')}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-4">
+                    <Bell className="h-8 w-8 mx-auto text-slate-400 mb-2" />
+                    <p className="text-sm text-slate-600">Aucune notification</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
             {/* Quick Actions */}
             <Card className="shadow-lg">
               <CardHeader>
-                <CardTitle className="text-xl text-slate-800">Actions Rapides</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <Link to="/messages">
-                    <Button variant="outline" className="h-20 flex-col w-full">
-                      <MessageCircle className="h-6 w-6 mb-2 text-blue-600" />
-                      <span className="text-xs">Messagerie</span>
-                    </Button>
-                  </Link>
-                  <Link to="/schedule">
-                    <Button variant="outline" className="h-20 flex-col w-full">
-                      <Calendar className="h-6 w-6 mb-2 text-green-600" />
-                      <span className="text-xs">Emploi du temps</span>
-                    </Button>
-                  </Link>
-                  <Link to="/courses">
-                    <Button variant="outline" className="h-20 flex-col w-full">
-                      <BookOpen className="h-6 w-6 mb-2 text-purple-600" />
-                      <span className="text-xs">Cours</span>
-                    </Button>
-                  </Link>
-                  <Link to="/documents">
-                    <Button variant="outline" className="h-20 flex-col w-full">
-                      <FileText className="h-6 w-6 mb-2 text-orange-600" />
-                      <span className="text-xs">Documents</span>
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Right Column - Sidebar */}
-          <div className="space-y-6">
-            {/* Upcoming Events */}
-            <Card className="shadow-lg">
-              <CardHeader>
-                <CardTitle className="flex items-center text-lg text-slate-800">
-                  <Calendar className="mr-2 h-4 w-4 text-green-600" />
-                  Prochains Événements
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {upcomingEvents.map((event) => (
-                  <div key={event.id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                    <div>
-                      <p className="font-medium text-sm text-slate-900">{event.title}</p>
-                      <p className="text-xs text-slate-600">{event.time}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs font-medium text-green-700">
-                        {new Date(event.date).toLocaleDateString('fr-FR', { 
-                          day: 'numeric', 
-                          month: 'short' 
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Quick Links */}
-            <Card className="shadow-lg">
-              <CardHeader>
-                <CardTitle className="text-lg text-slate-800">Liens Utiles</CardTitle>
+                <CardTitle className="text-lg text-slate-800">Actions Rapides</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 <Button variant="ghost" className="w-full justify-start" size="sm">
                   <Users className="mr-2 h-4 w-4" />
-                  Annuaire
+                  Gérer mes enfants
                 </Button>
                 <Button variant="ghost" className="w-full justify-start" size="sm">
-                  <GraduationCap className="mr-2 h-4 w-4" />
-                  Résultats
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Historique des paiements
                 </Button>
                 <Button variant="ghost" className="w-full justify-start" size="sm">
-                  <Award className="mr-2 h-4 w-4" />
-                  Activités
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Calendrier scolaire
+                </Button>
+                <Button variant="ghost" className="w-full justify-start" size="sm">
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  Contacter l'école
                 </Button>
                 <Button variant="ghost" className="w-full justify-start" size="sm">
                   <Settings className="mr-2 h-4 w-4" />
                   Paramètres
                 </Button>
-              </CardContent>
-            </Card>
-
-            {/* Online Users */}
-            <Card className="shadow-lg">
-              <CardHeader>
-                <CardTitle className="text-lg text-slate-800">Utilisateurs en ligne</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {['M. Dupont', 'Mme Martin', 'Sarah L.', 'Alex M.'].map((user, index) => (
-                    <div key={index} className="flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      <span className="text-sm text-slate-700">{user}</span>
-                    </div>
-                  ))}
-                </div>
               </CardContent>
             </Card>
           </div>

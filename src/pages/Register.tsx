@@ -1,13 +1,13 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { School, Eye, EyeOff } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -16,14 +16,23 @@ const Register = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    role: '',
-    studentId: '',
-    class: ''
+    phone: ''
   });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Vérifier si l'utilisateur est déjà connecté
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate('/');
+      }
+    };
+    checkUser();
+  }, [navigate]);
 
   const handleInputChange = (name: string, value: string) => {
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -43,15 +52,42 @@ const Register = () => {
       return;
     }
 
-    // Simulation de l'inscription
-    setTimeout(() => {
-      toast({
-        title: "Inscription réussie",
-        description: "Votre compte a été créé avec succès !",
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            phone: formData.phone
+          }
+        }
       });
-      navigate('/login');
+
+      if (error) {
+        toast({
+          title: "Erreur d'inscription",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Inscription réussie",
+          description: "Vérifiez votre email pour confirmer votre compte !",
+        });
+        navigate('/login');
+      }
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Une erreur inattendue s'est produite.",
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -63,9 +99,9 @@ const Register = () => {
               <School className="h-8 w-8 text-white" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-slate-900">Inscription</CardTitle>
+          <CardTitle className="text-2xl font-bold text-slate-900">Inscription Parent</CardTitle>
           <CardDescription>
-            Créez votre compte EcoleNet
+            Créez votre compte parent EcoleNet
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -98,7 +134,7 @@ const Register = () => {
               <Input
                 id="email"
                 type="email"
-                placeholder="jean.dupont@ecole.fr"
+                placeholder="jean.dupont@example.com"
                 value={formData.email}
                 onChange={(e) => handleInputChange('email', e.target.value)}
                 required
@@ -106,39 +142,15 @@ const Register = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="role">Rôle</Label>
-              <Select onValueChange={(value) => handleInputChange('role', value)} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionnez votre rôle" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="student">Élève</SelectItem>
-                  <SelectItem value="teacher">Enseignant</SelectItem>
-                  <SelectItem value="admin">Administration</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label htmlFor="phone">Téléphone (optionnel)</Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="06 12 34 56 78"
+                value={formData.phone}
+                onChange={(e) => handleInputChange('phone', e.target.value)}
+              />
             </div>
-
-            {formData.role === 'student' && (
-              <div className="space-y-2">
-                <Label htmlFor="class">Classe</Label>
-                <Select onValueChange={(value) => handleInputChange('class', value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionnez votre classe" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="6A">6ème A</SelectItem>
-                    <SelectItem value="6B">6ème B</SelectItem>
-                    <SelectItem value="5A">5ème A</SelectItem>
-                    <SelectItem value="5B">5ème B</SelectItem>
-                    <SelectItem value="4A">4ème A</SelectItem>
-                    <SelectItem value="4B">4ème B</SelectItem>
-                    <SelectItem value="3A">3ème A</SelectItem>
-                    <SelectItem value="3B">3ème B</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
 
             <div className="space-y-2">
               <Label htmlFor="password">Mot de passe</Label>

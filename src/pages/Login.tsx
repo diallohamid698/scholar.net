@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { School, Eye, EyeOff } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -16,28 +17,49 @@ const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  useEffect(() => {
+    // Vérifier si l'utilisateur est déjà connecté
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        navigate('/');
+      }
+    };
+    checkUser();
+  }, [navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulation de l'authentification
-    setTimeout(() => {
-      if (email && password) {
-        localStorage.setItem('user', JSON.stringify({ email, isAuthenticated: true }));
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        toast({
+          title: "Erreur de connexion",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
         toast({
           title: "Connexion réussie",
           description: "Bienvenue sur EcoleNet !",
         });
         navigate('/');
-      } else {
-        toast({
-          title: "Erreur de connexion",
-          description: "Veuillez remplir tous les champs.",
-          variant: "destructive",
-        });
       }
+    } catch (error) {
+      toast({
+        title: "Erreur",
+        description: "Une erreur inattendue s'est produite.",
+        variant: "destructive",
+      });
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
