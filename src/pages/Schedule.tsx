@@ -1,243 +1,382 @@
 
-import React, { useState } from 'react';
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, MapPin, ArrowLeft, ChevronLeft, ChevronRight, Users, BookOpen } from 'lucide-react';
-import { Link } from 'react-router-dom';
-
-interface ScheduleEvent {
-  id: number;
-  subject: string;
-  teacher: string;
-  room: string;
-  time: string;
-  duration: string;
-  type: 'course' | 'exam' | 'meeting' | 'break';
-  color: string;
-}
-
-interface DaySchedule {
-  date: string;
-  day: string;
-  events: ScheduleEvent[];
-}
+import { Calendar, Clock, MapPin, Users, BookOpen, School } from 'lucide-react';
+import { supabase } from "@/integrations/supabase/client";
+import { User as SupabaseUser } from '@supabase/supabase-js';
+import Navigation from '@/components/Navigation';
 
 const Schedule = () => {
-  const [currentWeek, setCurrentWeek] = useState(0);
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const navigate = useNavigate();
 
-  const getWeekSchedule = (weekOffset: number): DaySchedule[] => {
-    const baseDate = new Date();
-    baseDate.setDate(baseDate.getDate() + weekOffset * 7);
-    
-    const startOfWeek = new Date(baseDate);
-    startOfWeek.setDate(baseDate.getDate() - baseDate.getDay() + 1); // Lundi
-
-    const schedule: DaySchedule[] = [];
-    const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi'];
-
-    for (let i = 0; i < 5; i++) {
-      const currentDate = new Date(startOfWeek);
-      currentDate.setDate(startOfWeek.getDate() + i);
-      
-      schedule.push({
-        date: currentDate.toLocaleDateString('fr-FR'),
-        day: days[i],
-        events: generateDayEvents(i)
-      });
+  // Données simulées pour le planning
+  const [events] = useState([
+    {
+      id: 1,
+      title: 'Cours de Mathématiques',
+      type: 'course',
+      date: '2024-01-15',
+      time: '08:30 - 09:30',
+      location: 'Salle 12',
+      teacher: 'Mme Dubois',
+      description: 'Révision des fractions'
+    },
+    {
+      id: 2,
+      title: 'Réunion parents-professeurs',
+      type: 'meeting',
+      date: '2024-01-15',
+      time: '18:00 - 20:00',
+      location: 'Salle polyvalente',
+      teacher: 'Équipe pédagogique',
+      description: 'Bilan du trimestre'
+    },
+    {
+      id: 3,
+      title: 'Sortie au musée',
+      type: 'trip',
+      date: '2024-01-18',
+      time: '09:00 - 16:00',
+      location: 'Musée d\'Histoire Naturelle',
+      teacher: 'M. Martin',
+      description: 'Visite guidée sur les dinosaures'
+    },
+    {
+      id: 4,
+      title: 'Cours de Sport',
+      type: 'sport',
+      date: '2024-01-16',
+      time: '14:00 - 15:00',
+      location: 'Gymnase',
+      teacher: 'M. Leblanc',
+      description: 'Basketball'
+    },
+    {
+      id: 5,
+      title: 'Conseil de classe',
+      type: 'meeting',
+      date: '2024-01-20',
+      time: '17:00 - 18:30',
+      location: 'Salle des professeurs',
+      teacher: 'Équipe pédagogique',
+      description: 'Bilan des élèves'
     }
+  ]);
 
-    return schedule;
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setUser(session?.user ?? null);
+        
+        if (!session) {
+          navigate('/login');
+        } else {
+          fetchUserData(session.user.id);
+        }
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      
+      if (!session) {
+        navigate('/login');
+      } else {
+        fetchUserData(session.user.id);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const fetchUserData = async (userId: string) => {
+    try {
+      setIsLoading(true);
+      
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+      } else {
+        setProfile(profileData);
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const generateDayEvents = (dayIndex: number): ScheduleEvent[] => {
-    const baseEvents = [
-      { id: 1, subject: 'Mathématiques', teacher: 'M. Dubois', room: 'Salle 101', time: '08:00', duration: '2h', type: 'course' as const, color: 'bg-blue-100 text-blue-800' },
-      { id: 2, subject: 'Français', teacher: 'Mme Martin', room: 'Salle 203', time: '10:15', duration: '1h30', type: 'course' as const, color: 'bg-green-100 text-green-800' },
-      { id: 3, subject: 'Récréation', teacher: '', room: 'Cour', time: '11:45', duration: '15min', type: 'break' as const, color: 'bg-gray-100 text-gray-800' },
-      { id: 4, subject: 'Histoire-Géo', teacher: 'M. Rousseau', room: 'Salle 105', time: '14:00', duration: '2h', type: 'course' as const, color: 'bg-purple-100 text-purple-800' },
-      { id: 5, subject: 'Sciences', teacher: 'Mme Leroy', room: 'Lab 1', time: '16:15', duration: '1h', type: 'course' as const, color: 'bg-orange-100 text-orange-800' }
-    ];
-
-    // Varier les cours selon le jour
-    const variations = [
-      [0, 1, 2, 3], // Lundi
-      [1, 3, 4], // Mardi
-      [0, 2, 4], // Mercredi
-      [1, 2, 3, 4], // Jeudi
-      [0, 3] // Vendredi
-    ];
-
-    return variations[dayIndex]?.map(index => baseEvents[index]) || [];
+  const getEventTypeIcon = (type: string) => {
+    switch (type) {
+      case 'course':
+        return <BookOpen className="h-4 w-4" />;
+      case 'meeting':
+        return <Users className="h-4 w-4" />;
+      case 'trip':
+        return <MapPin className="h-4 w-4" />;
+      case 'sport':
+        return <Users className="h-4 w-4" />;
+      default:
+        return <Calendar className="h-4 w-4" />;
+    }
   };
 
-  const weekSchedule = getWeekSchedule(currentWeek);
-
-  const navigateWeek = (direction: 'prev' | 'next') => {
-    setCurrentWeek(prev => direction === 'prev' ? prev - 1 : prev + 1);
-    setSelectedDay(null);
+  const getEventTypeColor = (type: string) => {
+    switch (type) {
+      case 'course':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'meeting':
+        return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'trip':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'sport':
+        return 'bg-orange-100 text-orange-800 border-orange-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
   };
 
-  const getWeekRange = () => {
-    const firstDay = weekSchedule[0]?.date;
-    const lastDay = weekSchedule[4]?.date;
-    return `${firstDay} - ${lastDay}`;
+  const getEventTypeName = (type: string) => {
+    switch (type) {
+      case 'course':
+        return 'Cours';
+      case 'meeting':
+        return 'Réunion';
+      case 'trip':
+        return 'Sortie';
+      case 'sport':
+        return 'Sport';
+      default:
+        return 'Événement';
+    }
   };
 
-  const getTotalHours = () => {
-    return weekSchedule.reduce((total, day) => {
-      return total + day.events.filter(event => event.type === 'course').length * 1.5;
-    }, 0);
+  // Générer le calendrier du mois
+  const generateCalendar = () => {
+    const year = selectedDate.getFullYear();
+    const month = selectedDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+    
+    const days = [];
+    
+    // Jours vides du début
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(null);
+    }
+    
+    // Jours du mois
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const dayEvents = events.filter(event => event.date === dateStr);
+      days.push({ day, date: dateStr, events: dayEvents });
+    }
+    
+    return days;
   };
+
+  const todayEvents = events.filter(event => {
+    const today = new Date().toISOString().split('T')[0];
+    return event.date === today;
+  });
+
+  const upcomingEvents = events.filter(event => {
+    const eventDate = new Date(event.date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return eventDate >= today;
+  }).slice(0, 5);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <School className="h-12 w-12 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-slate-600">Chargement...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const calendarDays = generateCalendar();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center mb-6">
-          <Link to="/">
-            <Button variant="ghost" size="sm" className="mr-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Retour
-            </Button>
-          </Link>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center">
-            <Calendar className="mr-3 h-8 w-8 text-blue-600" />
-            Emploi du temps
-          </h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+      <Navigation user={user} profile={profile} />
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Planning scolaire</h1>
+          <p className="text-slate-600">Calendrier des cours, événements et activités</p>
         </div>
 
-        {/* En-tête de navigation */}
-        <Card className="mb-6">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-xl">Semaine du {getWeekRange()}</CardTitle>
-                <p className="text-sm text-slate-600 mt-1">
-                  {getTotalHours()}h de cours • 5 jours
-                </p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Button variant="outline" size="sm" onClick={() => navigateWeek('prev')}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => setCurrentWeek(0)}
-                  className={currentWeek === 0 ? 'bg-blue-50' : ''}
-                >
-                  Aujourd'hui
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => navigateWeek('next')}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
-
-        {/* Grille de l'emploi du temps */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {weekSchedule.map((daySchedule) => (
-            <Card key={daySchedule.day} className="h-fit">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center justify-between">
-                  <span>{daySchedule.day}</span>
-                  <Badge variant="secondary" className="text-xs">
-                    {daySchedule.events.length} cours
-                  </Badge>
-                </CardTitle>
-                <p className="text-sm text-slate-600">{daySchedule.date}</p>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {daySchedule.events.length > 0 ? (
-                  daySchedule.events.map((event) => (
-                    <div
-                      key={event.id}
-                      className={`p-3 rounded-lg border ${event.color} hover:shadow-md transition-all cursor-pointer hover-scale`}
-                      onClick={() => setSelectedDay(selectedDay === `${daySchedule.day}-${event.id}` ? null : `${daySchedule.day}-${event.id}`)}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Calendrier */}
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle className="flex items-center">
+                    <Calendar className="mr-2 h-5 w-5" />
+                    {selectedDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}
+                  </CardTitle>
+                  <div className="flex space-x-2">
+                    <button 
+                      onClick={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() - 1))}
+                      className="px-3 py-1 text-sm bg-slate-100 hover:bg-slate-200 rounded"
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold text-sm">{event.subject}</h4>
-                        <Badge variant="outline" className="text-xs">
-                          {event.duration}
-                        </Badge>
-                      </div>
-                      <div className="space-y-1 text-xs">
-                        <div className="flex items-center">
-                          <Clock className="h-3 w-3 mr-1" />
-                          {event.time}
-                        </div>
-                        {event.teacher && (
-                          <div className="flex items-center">
-                            <Users className="h-3 w-3 mr-1" />
-                            {event.teacher}
-                          </div>
-                        )}
-                        {event.room && (
-                          <div className="flex items-center">
-                            <MapPin className="h-3 w-3 mr-1" />
-                            {event.room}
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* Détails étendus */}
-                      {selectedDay === `${daySchedule.day}-${event.id}` && (
-                        <div className="mt-3 pt-3 border-t border-current/20 animate-fade-in">
-                          <div className="flex items-center space-x-2 text-xs">
-                            <BookOpen className="h-3 w-3" />
-                            <span>Cours magistral • Présence obligatoire</span>
-                          </div>
+                      ←
+                    </button>
+                    <button 
+                      onClick={() => setSelectedDate(new Date())}
+                      className="px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded"
+                    >
+                      Aujourd'hui
+                    </button>
+                    <button 
+                      onClick={() => setSelectedDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1))}
+                      className="px-3 py-1 text-sm bg-slate-100 hover:bg-slate-200 rounded"
+                    >
+                      →
+                    </button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-7 gap-1 mb-4">
+                  {['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'].map(day => (
+                    <div key={day} className="p-2 text-center text-sm font-medium text-slate-600">
+                      {day}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7 gap-1">
+                  {calendarDays.map((day, index) => (
+                    <div key={index} className="min-h-24 p-1">
+                      {day && (
+                        <div className={`h-full p-2 rounded border ${day.events.length > 0 ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-200'}`}>
+                          <div className="text-sm font-medium mb-1">{day.day}</div>
+                          {day.events.slice(0, 2).map(event => (
+                            <div key={event.id} className="text-xs bg-blue-600 text-white px-1 py-0.5 rounded mb-1 truncate">
+                              {event.title}
+                            </div>
+                          ))}
+                          {day.events.length > 2 && (
+                            <div className="text-xs text-slate-500">+{day.events.length - 2} autre(s)</div>
+                          )}
                         </div>
                       )}
                     </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-slate-500">
-                    <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">Aucun cours prévu</p>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Événements du jour */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Aujourd'hui</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {todayEvents.length > 0 ? (
+                  <div className="space-y-3">
+                    {todayEvents.map(event => (
+                      <div key={event.id} className={`p-3 rounded-lg border ${getEventTypeColor(event.type)}`}>
+                        <div className="flex items-center mb-2">
+                          {getEventTypeIcon(event.type)}
+                          <Badge variant="outline" className="ml-2 text-xs">
+                            {getEventTypeName(event.type)}
+                          </Badge>
+                        </div>
+                        <h4 className="font-medium text-sm">{event.title}</h4>
+                        <div className="flex items-center text-xs text-slate-600 mt-1">
+                          <Clock className="h-3 w-3 mr-1" />
+                          {event.time}
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                ) : (
+                  <p className="text-slate-600 text-center py-4">Aucun événement aujourd'hui</p>
                 )}
               </CardContent>
             </Card>
-          ))}
-        </div>
 
-        {/* Statistiques */}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Cette semaine</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600">{getTotalHours()}h</div>
-              <p className="text-xs text-slate-600">de cours programmés</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Prochains examens</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-orange-600">3</div>
-              <p className="text-xs text-slate-600">évaluations à venir</p>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Charge de travail</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">Normal</div>
-              <p className="text-xs text-slate-600">répartition équilibrée</p>
-            </CardContent>
-          </Card>
+            {/* Prochains événements */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Prochains événements</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {upcomingEvents.map(event => (
+                  <div key={event.id} className="p-3 border rounded-lg hover:bg-slate-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <Badge variant="outline" className="text-xs">
+                        {getEventTypeName(event.type)}
+                      </Badge>
+                      <span className="text-xs text-slate-500">
+                        {new Date(event.date).toLocaleDateString('fr-FR')}
+                      </span>
+                    </div>
+                    <h4 className="font-medium text-sm mb-1">{event.title}</h4>
+                    <div className="flex items-center text-xs text-slate-600">
+                      <Clock className="h-3 w-3 mr-1" />
+                      {event.time}
+                    </div>
+                    {event.location && (
+                      <div className="flex items-center text-xs text-slate-600 mt-1">
+                        <MapPin className="h-3 w-3 mr-1" />
+                        {event.location}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            {/* Légende */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Légende</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-blue-600 rounded"></div>
+                  <span className="text-sm">Cours</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-purple-600 rounded"></div>
+                  <span className="text-sm">Réunions</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-green-600 rounded"></div>
+                  <span className="text-sm">Sorties</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-3 h-3 bg-orange-600 rounded"></div>
+                  <span className="text-sm">Sport</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 };

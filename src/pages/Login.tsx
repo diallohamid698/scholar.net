@@ -22,7 +22,7 @@ const Login = () => {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        navigate('/');
+        navigate('/dashboard');
       }
     };
     checkUser();
@@ -49,7 +49,7 @@ const Login = () => {
           title: "Connexion réussie",
           description: "Bienvenue sur EcoleNet !",
         });
-        navigate('/');
+        navigate('/dashboard');
       }
     } catch (error) {
       toast({

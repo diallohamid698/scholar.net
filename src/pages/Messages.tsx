@@ -1,262 +1,308 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { MessageCircle, Send, Search, ArrowLeft, Phone, Video, MoreVertical } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { MessageCircle, Send, Mail, MailOpen, Plus, School, User } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-
-interface Message {
-  id: number;
-  sender: string;
-  content: string;
-  time: string;
-  isOwn: boolean;
-}
-
-interface Conversation {
-  id: number;
-  name: string;
-  lastMessage: string;
-  time: string;
-  unread: number;
-  avatar?: string;
-}
+import { supabase } from "@/integrations/supabase/client";
+import { User as SupabaseUser } from '@supabase/supabase-js';
+import Navigation from '@/components/Navigation';
 
 const Messages = () => {
-  const [selectedChat, setSelectedChat] = useState<number | null>(1);
-  const [newMessage, setNewMessage] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [user, setUser] = useState<SupabaseUser | null>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showNewMessage, setShowNewMessage] = useState(false);
+  const [newMessage, setNewMessage] = useState({
+    subject: '',
+    content: ''
+  });
+  const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [conversations, setConversations] = useState<Conversation[]>([
-    { id: 1, name: 'M. Dubois', lastMessage: 'Concernant le devoir de maths...', time: '14:30', unread: 2 },
-    { id: 2, name: 'Mme Martin', lastMessage: 'Réunion parents-professeurs', time: '12:15', unread: 0 },
-    { id: 3, name: 'Direction', lastMessage: 'Nouvelle circulaire', time: '10:45', unread: 1 },
-    { id: 4, name: 'Sarah L.', lastMessage: 'On se voit à la cantine ?', time: '09:20', unread: 0 },
-    { id: 5, name: 'Mme Rousseau', lastMessage: 'Sortie scolaire prévue', time: '08:45', unread: 0 }
+  // Messages simulés pour la démo
+  const [messages] = useState([
+    {
+      id: 1,
+      from: 'École Primaire Saint-Martin',
+      subject: 'Réunion parents-professeurs',
+      content: 'Chers parents, nous organisons une réunion parents-professeurs le 25 janvier à 18h00. Merci de confirmer votre présence.',
+      date: '2024-01-15',
+      read: false,
+      type: 'school'
+    },
+    {
+      id: 2,
+      from: 'Mme Dubois - Classe de CM1',
+      subject: 'Sortie scolaire au musée',
+      content: 'Bonjour, nous organisons une sortie au musée d\'histoire naturelle le 5 février. Authorization parentale requise.',
+      date: '2024-01-12',
+      read: true,
+      type: 'teacher'
+    },
+    {
+      id: 3,
+      from: 'Administration',
+      subject: 'Rappel - Frais de cantine',
+      content: 'Rappel pour le règlement des frais de cantine du mois de janvier. Merci de procéder au paiement avant le 20 janvier.',
+      date: '2024-01-10',
+      read: true,
+      type: 'admin'
+    }
   ]);
 
-  const [messages, setMessages] = useState<Message[]>([
-    { id: 1, sender: 'M. Dubois', content: 'Bonjour, j\'ai regardé votre devoir de mathématiques.', time: '14:25', isOwn: false },
-    { id: 2, sender: 'Vous', content: 'Bonjour Monsieur, y a-t-il des corrections à apporter ?', time: '14:28', isOwn: true },
-    { id: 3, sender: 'M. Dubois', content: 'Oui, il y a quelques erreurs dans l\'exercice 3. Pouvez-vous le refaire ?', time: '14:30', isOwn: false },
-    { id: 4, sender: 'Vous', content: 'Bien sûr, je vais corriger cela ce soir.', time: '14:32', isOwn: true }
-  ]);
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setUser(session?.user ?? null);
+        
+        if (!session) {
+          navigate('/login');
+        } else {
+          fetchUserData(session.user.id);
+        }
+      }
+    );
 
-  const handleSendMessage = () => {
-    if (newMessage.trim() && selectedChat) {
-      const newMsg: Message = {
-        id: messages.length + 1,
-        sender: 'Vous',
-        content: newMessage,
-        time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-        isOwn: true
-      };
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
       
-      setMessages([...messages, newMsg]);
-      
-      // Mettre à jour la conversation
-      setConversations(prev => 
-        prev.map(conv => 
-          conv.id === selectedChat 
-            ? { ...conv, lastMessage: newMessage, time: newMsg.time }
-            : conv
-        )
-      );
-      
-      setNewMessage('');
-      
-      toast({
-        title: "Message envoyé",
-        description: "Votre message a été envoyé avec succès.",
-      });
+      if (!session) {
+        navigate('/login');
+      } else {
+        fetchUserData(session.user.id);
+      }
+    });
 
-      // Simuler une réponse automatique après 2 secondes
-      setTimeout(() => {
-        const autoReply: Message = {
-          id: messages.length + 2,
-          sender: getCurrentConversationName() || 'Utilisateur',
-          content: 'Message reçu, je vous réponds dès que possible.',
-          time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-          isOwn: false
-        };
-        setMessages(prev => [...prev, autoReply]);
-      }, 2000);
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const fetchUserData = async (userId: string) => {
+    try {
+      setIsLoading(true);
+      
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+      } else {
+        setProfile(profileData);
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const getCurrentConversationName = () => {
-    return conversations.find(conv => conv.id === selectedChat)?.name;
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    toast({
+      title: "Message envoyé",
+      description: "Votre message a été envoyé à l'administration de l'école.",
+    });
+
+    setNewMessage({ subject: '', content: '' });
+    setShowNewMessage(false);
   };
 
-  const filteredConversations = conversations.filter(conv =>
-    conv.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    conv.lastMessage.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const getMessageIcon = (type: string) => {
+    switch (type) {
+      case 'school':
+        return <School className="h-4 w-4" />;
+      case 'teacher':
+        return <User className="h-4 w-4" />;
+      default:
+        return <MessageCircle className="h-4 w-4" />;
+    }
+  };
 
-  const markAsRead = (convId: number) => {
-    setConversations(prev =>
-      prev.map(conv =>
-        conv.id === convId ? { ...conv, unread: 0 } : conv
-      )
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <School className="h-12 w-12 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-slate-600">Chargement...</p>
+        </div>
+      </div>
     );
-  };
-
-  const handleConversationClick = (convId: number) => {
-    setSelectedChat(convId);
-    markAsRead(convId);
-  };
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center mb-6">
-          <Link to="/">
-            <Button variant="ghost" size="sm" className="mr-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Retour
-            </Button>
-          </Link>
-          <h1 className="text-3xl font-bold text-slate-900 flex items-center">
-            <MessageCircle className="mr-3 h-8 w-8 text-blue-600" />
-            Messagerie
-          </h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+      <Navigation user={user} profile={profile} />
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Messages</h1>
+          <p className="text-slate-600">Communication avec l'école et les enseignants</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)]">
-          {/* Liste des conversations */}
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle>Conversations</CardTitle>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input 
-                  placeholder="Rechercher..." 
-                  className="pl-10" 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="space-y-2">
-                {filteredConversations.map((conv) => (
-                  <div
-                    key={conv.id}
-                    className={`p-4 cursor-pointer hover:bg-slate-50 transition-colors ${
-                      selectedChat === conv.id ? 'bg-blue-50 border-r-2 border-blue-500' : ''
-                    }`}
-                    onClick={() => handleConversationClick(conv.id)}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback>{conv.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-center">
-                          <p className="font-medium text-sm text-slate-900 truncate">{conv.name}</p>
-                          <span className="text-xs text-slate-500">{conv.time}</span>
-                        </div>
-                        <p className="text-sm text-slate-600 truncate">{conv.lastMessage}</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Messages List */}
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle className="flex items-center">
+                    <MessageCircle className="mr-2 h-5 w-5" />
+                    Boîte de réception
+                  </CardTitle>
+                  <Button onClick={() => setShowNewMessage(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nouveau message
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {messages.map((message) => (
+                  <div key={message.id} className={`p-4 border rounded-lg cursor-pointer hover:bg-slate-50 ${!message.read ? 'bg-blue-50 border-blue-200' : ''}`}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center space-x-2">
+                        {getMessageIcon(message.type)}
+                        <span className="font-medium text-slate-900">{message.from}</span>
+                        {!message.read && <Badge variant="default" className="text-xs">Nouveau</Badge>}
                       </div>
-                      {conv.unread > 0 && (
-                        <span className="bg-blue-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
-                          {conv.unread}
-                        </span>
+                      <span className="text-sm text-slate-500">{new Date(message.date).toLocaleDateString('fr-FR')}</span>
+                    </div>
+                    <h3 className={`font-semibold mb-2 ${!message.read ? 'text-slate-900' : 'text-slate-700'}`}>
+                      {message.subject}
+                    </h3>
+                    <p className="text-slate-600 text-sm line-clamp-2">{message.content}</p>
+                    <div className="flex items-center mt-3">
+                      {message.read ? (
+                        <MailOpen className="h-4 w-4 text-slate-400 mr-1" />
+                      ) : (
+                        <Mail className="h-4 w-4 text-blue-600 mr-1" />
                       )}
+                      <span className="text-xs text-slate-500">
+                        {message.read ? 'Lu' : 'Non lu'}
+                      </span>
                     </div>
                   </div>
                 ))}
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
 
-          {/* Zone de chat */}
-          <Card className="lg:col-span-2 flex flex-col">
-            {selectedChat ? (
-              <>
-                <CardHeader className="border-b">
-                  <CardTitle className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback>
-                          {getCurrentConversationName()?.split(' ').map(n => n[0]).join('') || 'U'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <span className="font-semibold">{getCurrentConversationName()}</span>
-                        <div className="text-xs text-green-500 flex items-center">
-                          <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
-                          En ligne
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button variant="ghost" size="sm">
-                        <Phone className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <Video className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                
-                <CardContent className="flex-1 p-4 overflow-y-auto">
-                  <div className="space-y-4">
-                    {messages.map((message) => (
-                      <div key={message.id} className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                          message.isOwn 
-                            ? 'bg-blue-500 text-white' 
-                            : 'bg-slate-100 text-slate-900'
-                        } animate-fade-in`}>
-                          <p className="text-sm">{message.content}</p>
-                          <p className={`text-xs mt-1 ${message.isOwn ? 'text-blue-100' : 'text-slate-500'}`}>
-                            {message.time}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Quick Stats */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Statistiques</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Messages non lus</span>
+                  <Badge variant="destructive">1</Badge>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Total des messages</span>
+                  <span className="font-medium">{messages.length}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Contacts */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Contacts fréquents</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
+                  <School className="h-8 w-8 text-blue-600" />
+                  <div>
+                    <p className="font-medium text-sm">Administration</p>
+                    <p className="text-xs text-slate-500">École Primaire</p>
                   </div>
-                </CardContent>
-                
-                <div className="p-4 border-t">
-                  <div className="flex space-x-2">
+                </div>
+                <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
+                  <User className="h-8 w-8 text-green-600" />
+                  <div>
+                    <p className="font-medium text-sm">Mme Dubois</p>
+                    <p className="text-xs text-slate-500">Enseignante CM1</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer">
+                  <User className="h-8 w-8 text-purple-600" />
+                  <div>
+                    <p className="font-medium text-sm">M. Martin</p>
+                    <p className="text-xs text-slate-500">Directeur</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        {/* New Message Modal */}
+        {showNewMessage && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-2xl">
+              <CardHeader>
+                <CardTitle>Nouveau message</CardTitle>
+                <CardDescription>
+                  Envoyer un message à l'administration ou aux enseignants
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSendMessage} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Destinataire</label>
+                    <select className="w-full p-2 border rounded-md">
+                      <option>Administration générale</option>
+                      <option>Mme Dubois - CM1</option>
+                      <option>M. Martin - Directeur</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Sujet</label>
                     <Input
-                      placeholder="Tapez votre message..."
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                      className="flex-1"
+                      value={newMessage.subject}
+                      onChange={(e) => setNewMessage(prev => ({ ...prev, subject: e.target.value }))}
+                      placeholder="Sujet de votre message"
+                      required
                     />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Message</label>
+                    <Textarea
+                      value={newMessage.content}
+                      onChange={(e) => setNewMessage(prev => ({ ...prev, content: e.target.value }))}
+                      placeholder="Tapez votre message ici..."
+                      rows={6}
+                      required
+                    />
+                  </div>
+                  <div className="flex justify-end space-x-2">
                     <Button 
-                      onClick={handleSendMessage}
-                      disabled={!newMessage.trim()}
-                      className="hover-scale"
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => setShowNewMessage(false)}
                     >
-                      <Send className="h-4 w-4" />
+                      Annuler
+                    </Button>
+                    <Button type="submit">
+                      <Send className="h-4 w-4 mr-2" />
+                      Envoyer
                     </Button>
                   </div>
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center text-slate-500">
-                  <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Sélectionnez une conversation pour commencer</p>
-                </div>
-              </div>
-            )}
-          </Card>
-        </div>
-      </div>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </main>
     </div>
   );
 };

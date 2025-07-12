@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +26,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { User, Session } from '@supabase/supabase-js';
+import Navigation from '@/components/Navigation';
 
 const Index = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -46,10 +46,10 @@ const Index = () => {
         setSession(session);
         setUser(session?.user ?? null);
         
-        if (!session) {
-          navigate('/login');
-        } else {
+        if (session) {
           fetchUserData(session.user.id);
+        } else {
+          setIsLoading(false);
         }
       }
     );
@@ -59,15 +59,15 @@ const Index = () => {
       setSession(session);
       setUser(session?.user ?? null);
       
-      if (!session) {
-        navigate('/login');
-      } else {
+      if (session) {
         fetchUserData(session.user.id);
+      } else {
+        setIsLoading(false);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, []);
 
   const fetchUserData = async (userId: string) => {
     try {
@@ -138,23 +138,6 @@ const Index = () => {
     }
   };
 
-  const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      toast({
-        title: "Erreur de déconnexion",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Déconnexion réussie",
-        description: "À bientôt sur EcoleNet !",
-      });
-      navigate('/login');
-    }
-  };
-
   const getOverdueFees = () => {
     const today = new Date();
     return studentFees.filter(fee => 
@@ -174,7 +157,7 @@ const Index = () => {
     return fees.reduce((total, fee) => total + parseFloat(fee.amount), 0);
   };
 
-  if (isLoading || !user) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
@@ -185,54 +168,97 @@ const Index = () => {
     );
   }
 
+  // Si l'utilisateur n'est pas connecté, afficher la page d'accueil publique
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+        <Navigation />
+        
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+          <div className="text-center mb-16">
+            <div className="flex justify-center mb-6">
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-4 rounded-2xl">
+                <School className="h-16 w-16 text-white" />
+              </div>
+            </div>
+            <h1 className="text-4xl font-bold text-slate-900 mb-4">
+              Bienvenue sur EcoleNet
+            </h1>
+            <p className="text-xl text-slate-600 mb-8">
+              La plateforme de gestion scolaire pour les parents
+            </p>
+            <div className="flex justify-center space-x-4">
+              <Button size="lg" asChild>
+                <Link to="/login">Se connecter</Link>
+              </Button>
+              <Button variant="outline" size="lg" asChild>
+                <Link to="/register">S'inscrire</Link>
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            <Card className="text-center">
+              <CardHeader>
+                <GraduationCap className="h-12 w-12 mx-auto text-blue-600 mb-4" />
+                <CardTitle>Suivi des enfants</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-slate-600">
+                  Gérez les informations de vos enfants scolarisés
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="text-center">
+              <CardHeader>
+                <CreditCard className="h-12 w-12 mx-auto text-green-600 mb-4" />
+                <CardTitle>Paiements</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-slate-600">
+                  Suivez et payez les frais scolaires en ligne
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="text-center">
+              <CardHeader>
+                <MessageCircle className="h-12 w-12 mx-auto text-purple-600 mb-4" />
+                <CardTitle>Communication</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-slate-600">
+                  Communiquez directement avec l'école
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="text-center">
+              <CardHeader>
+                <Calendar className="h-12 w-12 mx-auto text-orange-600 mb-4" />
+                <CardTitle>Planning</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-slate-600">
+                  Consultez le calendrier scolaire et les événements
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   const overdueFees = getOverdueFees();
   const pendingFees = getPendingFees();
   const paidFees = getPaidFees();
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      {/* Header */}
-      <header className="bg-white shadow-lg border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center space-x-3">
-              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-2 rounded-xl">
-                <School className="h-8 w-8 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900">EcoleNet</h1>
-                <p className="text-sm text-slate-600">Espace Parent</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-3">
-                <Button variant="ghost" size="sm">
-                  <Bell className="h-4 w-4" />
-                  {notifications.length > 0 && (
-                    <Badge className="ml-1 h-4 w-4 p-0 text-xs">{notifications.length}</Badge>
-                  )}
-                </Button>
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src="/api/placeholder/32/32" />
-                  <AvatarFallback>
-                    {profile?.first_name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="text-sm">
-                  <p className="font-medium">{profile?.first_name} {profile?.last_name}</p>
-                  <p className="text-slate-500">{user.email}</p>
-                </div>
-                <Button variant="ghost" size="sm" onClick={handleLogout}>
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <Navigation user={user} profile={profile} notifications={notifications} />
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -293,9 +319,11 @@ const Index = () => {
                       Liste de vos enfants inscrits
                     </CardDescription>
                   </div>
-                  <Button size="sm">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Ajouter
+                  <Button size="sm" asChild>
+                    <Link to="/dashboard">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Gérer
+                    </Link>
                   </Button>
                 </div>
               </CardHeader>
@@ -324,7 +352,7 @@ const Index = () => {
                   <div className="text-center py-8">
                     <GraduationCap className="h-12 w-12 mx-auto text-slate-400 mb-4" />
                     <p className="text-slate-600">Aucun enfant inscrit</p>
-                    <p className="text-sm text-slate-500">Ajoutez vos enfants pour commencer</p>
+                    <p className="text-sm text-slate-500">Ajoutez vos enfants dans le tableau de bord</p>
                   </div>
                 )}
               </CardContent>
@@ -343,7 +371,7 @@ const Index = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 {studentFees.length > 0 ? (
-                  studentFees.map((fee) => (
+                  studentFees.slice(0, 5).map((fee) => (
                     <div key={fee.id} className="border-l-4 border-blue-500 bg-blue-50 p-4 rounded-r-lg">
                       <div className="flex justify-between items-start mb-2">
                         <div>
@@ -364,13 +392,6 @@ const Index = () => {
                           </Badge>
                         </div>
                       </div>
-                      {fee.status === 'pending' && (
-                        <div className="mt-3">
-                          <Button size="sm" className="mr-2">
-                            Payer maintenant
-                          </Button>
-                        </div>
-                      )}
                     </div>
                   ))
                 ) : (
@@ -419,25 +440,35 @@ const Index = () => {
                 <CardTitle className="text-lg text-slate-800">Actions Rapides</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Button variant="ghost" className="w-full justify-start" size="sm">
-                  <Users className="mr-2 h-4 w-4" />
-                  Gérer mes enfants
+                <Button variant="ghost" className="w-full justify-start" size="sm" asChild>
+                  <Link to="/dashboard">
+                    <Users className="mr-2 h-4 w-4" />
+                    Gérer mes enfants
+                  </Link>
                 </Button>
-                <Button variant="ghost" className="w-full justify-start" size="sm">
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  Historique des paiements
+                <Button variant="ghost" className="w-full justify-start" size="sm" asChild>
+                  <Link to="/dashboard">
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    Historique des paiements
+                  </Link>
                 </Button>
-                <Button variant="ghost" className="w-full justify-start" size="sm">
-                  <Calendar className="mr-2 h-4 w-4" />
-                  Calendrier scolaire
+                <Button variant="ghost" className="w-full justify-start" size="sm" asChild>
+                  <Link to="/schedule">
+                    <Calendar className="mr-2 h-4 w-4" />
+                    Calendrier scolaire
+                  </Link>
                 </Button>
-                <Button variant="ghost" className="w-full justify-start" size="sm">
-                  <MessageCircle className="mr-2 h-4 w-4" />
-                  Contacter l'école
+                <Button variant="ghost" className="w-full justify-start" size="sm" asChild>
+                  <Link to="/messages">
+                    <MessageCircle className="mr-2 h-4 w-4" />
+                    Contacter l'école
+                  </Link>
                 </Button>
-                <Button variant="ghost" className="w-full justify-start" size="sm">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Paramètres
+                <Button variant="ghost" className="w-full justify-start" size="sm" asChild>
+                  <Link to="/dashboard">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Paramètres
+                  </Link>
                 </Button>
               </CardContent>
             </Card>

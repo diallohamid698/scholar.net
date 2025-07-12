@@ -1,15 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { 
   School, 
-  LogOut, 
-  Bell, 
   GraduationCap, 
   CreditCard, 
   Settings,
@@ -20,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import StudentManager from '@/components/StudentManager';
 import PaymentManager from '@/components/PaymentManager';
+import Navigation from '@/components/Navigation';
 
 const Dashboard = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -132,23 +128,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      toast({
-        title: "Erreur de déconnexion",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Déconnexion réussie",
-        description: "À bientôt sur EcoleNet !",
-      });
-      navigate('/login');
-    }
-  };
-
   const refreshData = () => {
     if (user) {
       fetchUserData(user.id);
@@ -174,46 +153,7 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      {/* Header */}
-      <header className="bg-white shadow-lg border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center space-x-3">
-              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-2 rounded-xl">
-                <School className="h-8 w-8 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900">EcoleNet</h1>
-                <p className="text-sm text-slate-600">Tableau de bord Parent</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-3">
-                <Button variant="ghost" size="sm">
-                  <Bell className="h-4 w-4" />
-                  {notifications.length > 0 && (
-                    <Badge className="ml-1 h-4 w-4 p-0 text-xs">{notifications.length}</Badge>
-                  )}
-                </Button>
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src="/api/placeholder/32/32" />
-                  <AvatarFallback>
-                    {profile?.first_name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="text-sm">
-                  <p className="font-medium">{profile?.first_name} {profile?.last_name}</p>
-                  <p className="text-slate-500">{user.email}</p>
-                </div>
-                <Button variant="ghost" size="sm" onClick={handleLogout}>
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+      <Navigation user={user} profile={profile} notifications={notifications} />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
