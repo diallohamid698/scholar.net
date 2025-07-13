@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { User, Session } from '@supabase/supabase-js';
 import Navigation from '@/components/Navigation';
+import RoleBasedRedirect from '@/components/RoleBasedRedirect';
+import { useUserRole } from '@/hooks/useUserRole';
 
 const Index = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -38,6 +41,9 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
+  
+  // Use the role hook
+  const { userProfile, isLoading: roleLoading } = useUserRole(user);
 
   useEffect(() => {
     // Écouter les changements d'authentification
@@ -86,49 +92,52 @@ const Index = () => {
         setProfile(profileData);
       }
 
-      // Récupérer les étudiants
-      const { data: studentsData, error: studentsError } = await supabase
-        .from('students')
-        .select('*')
-        .eq('parent_id', userId);
+      // Only fetch parent-specific data if user is a parent
+      if (profileData?.role === 'parent' || !profileData?.role) {
+        // Récupérer les étudiants
+        const { data: studentsData, error: studentsError } = await supabase
+          .from('students')
+          .select('*')
+          .eq('parent_id', userId);
 
-      if (studentsError) {
-        console.error('Error fetching students:', studentsError);
-      } else {
-        setStudents(studentsData || []);
-        
-        // Récupérer les frais pour chaque étudiant
-        if (studentsData && studentsData.length > 0) {
-          const studentIds = studentsData.map(s => s.id);
-          const { data: feesData, error: feesError } = await supabase
-            .from('student_fees')
-            .select(`
-              *,
-              fee_types(*),
-              students(first_name, last_name)
-            `)
-            .in('student_id', studentIds);
+        if (studentsError) {
+          console.error('Error fetching students:', studentsError);
+        } else {
+          setStudents(studentsData || []);
+          
+          // Récupérer les frais pour chaque étudiant
+          if (studentsData && studentsData.length > 0) {
+            const studentIds = studentsData.map(s => s.id);
+            const { data: feesData, error: feesError } = await supabase
+              .from('student_fees')
+              .select(`
+                *,
+                fee_types(*),
+                students(first_name, last_name)
+              `)
+              .in('student_id', studentIds);
 
-          if (feesError) {
-            console.error('Error fetching fees:', feesError);
-          } else {
-            setStudentFees(feesData || []);
+            if (feesError) {
+              console.error('Error fetching fees:', feesError);
+            } else {
+              setStudentFees(feesData || []);
+            }
           }
         }
-      }
 
-      // Récupérer les notifications
-      const { data: notificationsData, error: notificationsError } = await supabase
-        .from('payment_notifications')
-        .select('*')
-        .eq('parent_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(5);
+        // Récupérer les notifications
+        const { data: notificationsData, error: notificationsError } = await supabase
+          .from('payment_notifications')
+          .select('*')
+          .eq('parent_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(5);
 
-      if (notificationsError) {
-        console.error('Error fetching notifications:', notificationsError);
-      } else {
-        setNotifications(notificationsData || []);
+        if (notificationsError) {
+          console.error('Error fetching notifications:', notificationsError);
+        } else {
+          setNotifications(notificationsData || []);
+        }
       }
 
     } catch (error) {
@@ -137,6 +146,11 @@ const Index = () => {
       setIsLoading(false);
     }
   };
+
+  // Show role-based redirect if user is authenticated
+  if (user && userProfile && !roleLoading) {
+    return <RoleBasedRedirect userRole={userProfile.role} isLoading={roleLoading} />;
+  }
 
   const getOverdueFees = () => {
     const today = new Date();
@@ -157,7 +171,7 @@ const Index = () => {
     return fees.reduce((total, fee) => total + parseFloat(fee.amount), 0);
   };
 
-  if (isLoading) {
+  if (isLoading || roleLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
@@ -185,7 +199,7 @@ const Index = () => {
               Bienvenue sur EcoleNet
             </h1>
             <p className="text-xl text-slate-600 mb-8">
-              La plateforme de gestion scolaire pour les parents
+              La plateforme de gestion scolaire complète
             </p>
             <div className="flex justify-center space-x-4">
               <Button size="lg" asChild>
@@ -246,11 +260,65 @@ const Index = () => {
               </CardContent>
             </Card>
           </div>
+
+          {/* Role-specific features */}
+          <div className="mt-16">
+            <h2 className="text-2xl font-bold text-center text-slate-900 mb-8">
+              Espaces dédiés par rôle
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <Card className="text-center border-2 border-blue-200">
+                <CardHeader>
+                  <Users className="h-12 w-12 mx-auto text-blue-600 mb-4" />
+                  <CardTitle className="text-blue-800">Espace Parent</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-slate-600 mb-4">
+                    Suivez la scolarité de vos enfants, gérez les paiements et communiquez avec l'école
+                  </p>
+                  <Badge variant="outline" className="border-blue-300 text-blue-700">
+                    Suivi • Paiements • Communication
+                  </Badge>
+                </CardContent>
+              </Card>
+
+              <Card className="text-center border-2 border-green-200">
+                <CardHeader>
+                  <BookOpen className="h-12 w-12 mx-auto text-green-600 mb-4" />
+                  <CardTitle className="text-green-800">Espace Enseignant</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-slate-600 mb-4">
+                    Gérez vos classes, notez vos élèves et communiquez avec les parents
+                  </p>
+                  <Badge variant="outline" className="border-green-300 text-green-700">
+                    Classes • Notes • Planning
+                  </Badge>
+                </CardContent>
+              </Card>
+
+              <Card className="text-center border-2 border-purple-200">
+                <CardHeader>
+                  <GraduationCap className="h-12 w-12 mx-auto text-purple-600 mb-4" />
+                  <CardTitle className="text-purple-800">Espace Étudiant</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-slate-600 mb-4">
+                    Consultez vos notes, votre emploi du temps et vos devoirs à rendre
+                  </p>
+                  <Badge variant="outline" className="border-purple-300 text-purple-700">
+                    Notes • Planning • Devoirs
+                  </Badge>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </main>
       </div>
     );
   }
 
+  // If user is authenticated but we're still here, show parent dashboard content
   const overdueFees = getOverdueFees();
   const pendingFees = getPendingFees();
   const paidFees = getPaidFees();
