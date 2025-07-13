@@ -40,10 +40,10 @@ export const useUserRole = (user: User | null) => {
           };
           setUserProfile(defaultProfile);
         } else {
-          // Add role if not present (for existing users)
+          // Add role if not present (for existing users) - safely handle missing role property
           const profileWithRole: UserProfile = {
             ...data,
-            role: data.role || 'parent',
+            role: (data as any).role || 'parent', // Safe type assertion for role property
           };
           setUserProfile(profileWithRole);
         }

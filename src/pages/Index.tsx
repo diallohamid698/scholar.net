@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
@@ -92,8 +91,9 @@ const Index = () => {
         setProfile(profileData);
       }
 
-      // Only fetch parent-specific data if user is a parent
-      if (profileData?.role === 'parent' || !profileData?.role) {
+      // Only fetch parent-specific data if user is a parent or role is not set yet
+      const userRole = (profileData as any)?.role || 'parent';
+      if (userRole === 'parent' || !userRole) {
         // Récupérer les étudiants
         const { data: studentsData, error: studentsError } = await supabase
           .from('students')

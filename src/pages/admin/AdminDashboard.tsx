@@ -67,12 +67,12 @@ const AdminDashboard = () => {
 
       const pendingPayments = paymentsData?.filter(p => p.status === 'pending').length || 0;
       const totalRevenue = paymentsData?.filter(p => p.status === 'completed')
-        .reduce((sum, p) => sum + parseFloat(p.amount), 0) || 0;
+        .reduce((sum, p) => sum + parseFloat(p.amount.toString()), 0) || 0;
 
       setStats({
         totalStudents: studentsCount || 0,
-        totalTeachers: usersData?.filter(u => u.role === 'teacher').length || 0,
-        totalParents: usersData?.filter(u => u.role === 'parent').length || 0,
+        totalTeachers: usersData?.filter(u => (u as any).role === 'teacher').length || 0,
+        totalParents: usersData?.filter(u => (u as any).role === 'parent' || !(u as any).role).length || 0,
         pendingPayments,
         totalRevenue,
       });
@@ -206,8 +206,8 @@ const AdminDashboard = () => {
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <Badge variant={user.role === 'admin' ? 'destructive' : 'default'}>
-                          {user.role || 'parent'}
+                        <Badge variant={(user as any).role === 'admin' ? 'destructive' : 'default'}>
+                          {(user as any).role || 'parent'}
                         </Badge>
                         <Button variant="outline" size="sm">
                           Modifier
